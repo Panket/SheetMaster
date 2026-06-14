@@ -174,6 +174,30 @@ def read_file(file_path, file_name, use_polars=False):
         st.error(f"⚠️ Error reading file '{file_name}': {str(e)}")
         return None
 
+def safe_dataframe(df, num_rows=100):
+    """Sanitizes columns to prevent PyArrow serialization errors in Streamlit."""
+    df_clean = df.copy()
+    for col in df_clean.columns:
+        if df_clean[col].dtype == 'object':
+            # Convert datetime/timestamp objects to strings
+            df_clean[col] = df_clean[col].apply(
+                lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else x
+            )
+            # Convert mixed types within object columns to string
+            try:
+                non_nulls = df_clean[col].dropna()
+                if not non_nulls.empty:
+                    types_in_col = non_nulls.apply(lambda x: type(x).__name__).nunique()
+                    if types_in_col > 1:
+                        df_clean[col] = df_clean[col].astype(str).replace('<NA>', '').replace('nan', '')
+            except Exception:
+                df_clean[col] = df_clean[col].astype(str)
+                
+    if num_rows:
+        st.dataframe(df_clean.head(num_rows), use_container_width=True)
+    else:
+        st.dataframe(df_clean, use_container_width=True)
+
 # Export helpers
 def convert_df_to_excel(df):
     output = io.BytesIO()
@@ -368,7 +392,7 @@ with tab1:
             with col_ui:
                 with st.expander(f"👁️ Preview: {name}", expanded=False):
                     st.write(f"Dimensions: {df.shape[0]} rows × {df.shape[1]} columns")
-                    st.dataframe(df.head(5), use_container_width=True)
+                    safe_dataframe(df, num_rows=5)
 
         st.markdown("---")
         combine_method = st.radio("Choose Combine Method:", ["Concatenate (Vertical Stack)", "Merge (Horizontal Join)"], horizontal=True)
@@ -494,7 +518,7 @@ with tab1:
         if st.session_state["active_df_name"] and ("Result" in st.session_state["active_df_name"]):
             current_result_df = st.session_state["datasets"][st.session_state["active_df_name"]]
             st.markdown("#### 📈 Output Result Preview")
-            st.dataframe(current_result_df.head(100), use_container_width=True)
+            safe_dataframe(current_result_df, num_rows=100)
             
             # Export Options
             col_exp1, col_exp2 = st.columns(2)
@@ -654,7 +678,7 @@ with tab2:
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    st.dataframe(filtered_df.head(100), use_container_width=True)
+                    safe_dataframe(filtered_df, num_rows=100)
                     
                     # Actions on filtered dataset
                     col_f1, col_f2, col_f3 = st.columns(3)
@@ -838,7 +862,7 @@ with tab3:
 
         st.markdown("---")
         st.markdown("#### Preview Current Active Dataset")
-        st.dataframe(df.head(100), use_container_width=True)
+        safe_dataframe(df, num_rows=100)
 
 # ----------------------------------------------------
 # Tab 4: Advanced Data Cleaning
@@ -1021,4 +1045,4 @@ with tab4:
 
         st.markdown("---")
         st.markdown("#### Preview Current Cleaned Active Dataset")
-        st.dataframe(df.head(100), use_container_width=True)
+        safe_dataframe(df, num_rows=100)
