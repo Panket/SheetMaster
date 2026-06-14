@@ -183,12 +183,18 @@ def safe_dataframe(df, num_rows=100):
             df_clean[col] = df_clean[col].apply(
                 lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else x
             )
-            # Convert mixed types within object columns to string
+            # Convert mixed types or non-standard types to string
             try:
                 non_nulls = df_clean[col].dropna()
                 if not non_nulls.empty:
-                    types_in_col = non_nulls.apply(lambda x: type(x).__name__).nunique()
-                    if types_in_col > 1:
+                    unique_types = {type(val).__name__ for val in non_nulls}
+                    is_primitive = True
+                    for t in unique_types:
+                        # check if type is string, integer, float or boolean (including numpy equivalents)
+                        if not any(p in t.lower() for p in ['str', 'int', 'float', 'bool']):
+                            is_primitive = False
+                            break
+                    if len(unique_types) > 1 or not is_primitive:
                         df_clean[col] = df_clean[col].astype(str).replace('<NA>', '').replace('nan', '')
             except Exception:
                 df_clean[col] = df_clean[col].astype(str)
